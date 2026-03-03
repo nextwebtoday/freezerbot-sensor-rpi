@@ -51,11 +51,20 @@ def mock_dependencies():
     # Remove cached module to force reimport with fresh mocks
     sys.modules.pop('freezerbot_setup', None)
 
+    # Save original module state so we can restore hardware mocks after cleanup
+    saved_modules = {k: sys.modules.get(k) for k in ['RPi', 'RPi.GPIO']}
+
     yield mocks
 
-    # Cleanup
-    for mod_name in ['freezerbot_setup', 'config', 'led_control', 'restarts', 'RPi', 'RPi.GPIO']:
+    # Cleanup — only remove app-level modules, not hardware mocks
+    for mod_name in ['freezerbot_setup', 'config', 'led_control', 'restarts']:
         sys.modules.pop(mod_name, None)
+
+    # Restore hardware mock modules so other test files (e.g. test_led_control.py)
+    # that rely on conftest's hardware mocks still work after this fixture runs
+    for mod_name, mod in saved_modules.items():
+        if mod is not None:
+            sys.modules[mod_name] = mod
 
 
 def _import_setup():
