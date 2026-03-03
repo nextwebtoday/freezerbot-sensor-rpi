@@ -9,7 +9,7 @@ actual Raspberry Pi hardware.
 
 import sys
 import os
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 # Mock hardware-specific modules that aren't available in CI
 HARDWARE_MODULES = [
@@ -39,3 +39,8 @@ sys.modules['w1thermsensor'].W1ThermSensor = w1_mock_class
 
 # Add raspberry_pi directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'raspberry_pi'))
+
+# Mock load_dotenv globally — find_dotenv() can fail in CI when os.path.exists is
+# patched or when called without a proper frame stack. Since tests set env vars
+# directly via patch.dict, dotenv loading is not needed in tests.
+patch('dotenv.load_dotenv', MagicMock()).start()
