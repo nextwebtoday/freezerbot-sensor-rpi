@@ -27,6 +27,8 @@ def _import_led_control():
 
 @pytest.fixture(autouse=True)
 def reset_singleton():
+    # Save modules that _import_led_control replaces so we can restore them
+    saved_modules = {k: sys.modules.get(k) for k in ('restarts', 'api', 'config')}
     yield
     for mod_name in list(sys.modules.keys()):
         if 'led_control' in mod_name:
@@ -37,6 +39,12 @@ def reset_singleton():
                     lc_mod.LedControl._initialized = False
             except Exception:
                 pass
+    # Restore modules that were replaced with MagicMocks
+    for mod_name, mod in saved_modules.items():
+        if mod is not None:
+            sys.modules[mod_name] = mod
+        elif mod_name in sys.modules:
+            del sys.modules[mod_name]
 
 
 def _make_lc():
