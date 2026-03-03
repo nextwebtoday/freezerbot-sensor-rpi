@@ -512,7 +512,7 @@ class TestStartHotspot:
 
 
 class TestRunMethod:
-    @patch.object(sys.modules['freezerbot_setup'], 'FreezerBotSetup')
+    @patch('freezerbot_setup.FreezerBotSetup')
     def test_run_enters_setup_mode_when_not_configured(self, mock_cls, mock_dependencies):
         mock_dependencies['config_inst'].configuration_exists = False
         mock_dependencies['config_inst'].is_configured = False
