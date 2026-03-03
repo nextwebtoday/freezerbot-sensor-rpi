@@ -74,7 +74,9 @@ def _import_setup():
 
 
 def _create_setup(mock_deps):
-    fbs = _import_setup()
+    # If the module was already imported (e.g. by @patch decorators), reuse it
+    # so that any active patches on the module remain in effect.
+    fbs = sys.modules.get('freezerbot_setup') or _import_setup()
     return fbs.FreezerBotSetup()
 
 
