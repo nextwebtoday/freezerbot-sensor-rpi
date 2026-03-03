@@ -447,6 +447,7 @@ class TestUpdateHistory:
         with patch('firmware_updater.Config'), \
              patch('firmware_updater.DeviceInfo'), \
              patch('logging.basicConfig'), \
+             patch('os.makedirs'), \
              patch('os.path.exists', return_value=False):
             
             updater = firmware_updater.FirmwareUpdater()
