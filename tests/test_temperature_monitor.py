@@ -85,6 +85,14 @@ def mock_dependencies():
     sys.modules['restarts'] = mock_restarts
     mocks['restarts'] = mock_restarts
 
+    # Mock offline_buffer so TemperatureMonitor doesn't try to create /home/pi
+    mock_offline_buffer_inst = MagicMock()
+    mock_offline_buffer_cls = MagicMock(return_value=mock_offline_buffer_inst)
+    offline_buffer_mod = MagicMock()
+    offline_buffer_mod.OfflineBuffer = mock_offline_buffer_cls
+    sys.modules['offline_buffer'] = offline_buffer_mod
+    mocks['offline_buffer'] = mock_offline_buffer_inst
+
     # Mock RPi.GPIO
     sys.modules['RPi'] = MagicMock()
     sys.modules['RPi.GPIO'] = MagicMock()
@@ -97,7 +105,8 @@ def mock_dependencies():
     # Cleanup
     for mod_name in ['temperature_monitor', 'config', 'api', 'led_control',
                      'freezerbot_setup', 'battery', 'network', 'device_info',
-                     'restarts', 'w1thermsensor', 'gpiozero', 'RPi', 'RPi.GPIO']:
+                     'restarts', 'w1thermsensor', 'gpiozero', 'RPi', 'RPi.GPIO',
+                     'offline_buffer']:
         sys.modules.pop(mod_name, None)
 
 
