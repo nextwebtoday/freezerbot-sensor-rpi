@@ -12,6 +12,7 @@ from api import make_api_request, api_token_exists, set_api_token, make_api_requ
 from freezerbot_setup import FreezerBotSetup
 from config import Config
 from battery import PiSugarMonitor
+from offline_buffer import OfflineBuffer
 from network import test_internet_connectivity, load_network_status, save_network_status, reset_network_status, \
     get_current_wifi_ssid, get_wifi_signal_strength, get_ip_address, get_mac_address, get_configured_wifi_networks
 from device_info import DeviceInfo
@@ -31,6 +32,7 @@ class TemperatureMonitor:
         self.network_status = load_network_status()
         self.network_failure_count = self.network_status.get('network_failure_count', 0)
         self.reboot_count = self.network_status.get('reboot_count', 0)
+        self.offline_buffer = OfflineBuffer()
         self.max_reboots = 3
         self.sensor = None
         self.consecutive_sensor_errors = 0
@@ -124,9 +126,37 @@ class TemperatureMonitor:
             self.report_and_reboot_system(failure_type)
             raise Exception(f"Rebooting system due to {self.consecutive_sensor_errors} sensor failures")
 
+    def _flush_offline_buffer(self) -> bool:
+        """Send buffered readings to the API batch endpoint. Returns True if successful or buffer was empty."""
+        buffered = self.offline_buffer.get_buffered_readings()
+        if not buffered:
+            return True
+
+        print(f"Flushing {len(buffered)} buffered reading(s) to API")
+        readings = [
+            {**entry['payload'], 'taken_at': entry['taken_at']}
+            for entry in buffered
+        ]
+
+        try:
+            response = make_api_request('sensors/batch-readings', json={'readings': readings})
+            if response.status_code == 201:
+                print(f"Successfully sent {len(readings)} buffered reading(s)")
+                self.offline_buffer.clear_buffer()
+                return True
+            else:
+                print(f"Failed to flush buffer: {response.status_code} - {response.text}")
+                return False
+        except Exception:
+            print(f"Exception flushing buffer: {traceback.format_exc()}")
+            return False
+
     def run(self):
         """Main monitoring loop with resilient error handling"""
         print("Starting temperature monitoring")
+
+        # Flush any readings buffered during a previous offline period
+        self._flush_offline_buffer()
 
         recovery_attempted = False
         api_failure_count = 0
@@ -176,18 +206,23 @@ class TemperatureMonitor:
                     self.network_failure_count = 0
                     self.reboot_count = 0
                     reset_network_status()
+                    # Flush readings buffered during the offline period
+                    self._flush_offline_buffer()
 
                 recovery_attempted = False
 
+                taken_at = None
+                payload = None
                 try:
                     self.obtain_api_token()
 
                     temperature = self.read_temperature()
 
+                    taken_at = datetime.utcnow().isoformat() + 'Z'
                     payload = {
                         "degrees_c": temperature,
                         "cpu_degrees_c": CPUTemperature().temperature,
-                        "taken_at": datetime.utcnow().isoformat() + 'Z',
+                        "taken_at": taken_at,
                         'battery_level': self.pisugar.get_battery_level(),
                         'battery_amps': self.pisugar.get_current(),
                         'battery_volts': self.pisugar.get_voltage(),
@@ -229,6 +264,15 @@ class TemperatureMonitor:
                     # Only change LED state after persistent API failures
                     if api_failure_count >= 3:
                         self.led_control.set_state("error")
+
+                    # Buffer the reading only when connectivity is failing (not auth/config errors)
+                    if payload is not None and taken_at is not None and not test_internet_connectivity():
+                        try:
+                            self.offline_buffer.prune_to_limit()
+                            self.offline_buffer.add_reading(payload, taken_at)
+                            print(f"Reading buffered offline (buffer size: {self.offline_buffer.count()})")
+                        except Exception:
+                            print(f"Failed to buffer reading: {traceback.format_exc()}")
 
                 if len(self.consecutive_errors) > 0:
                     self.report_consecutive_errors()
